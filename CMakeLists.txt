@@ -1,0 +1,18 @@
+#===============================================================================
+#
+# Copyright (C) 2020 Istituto Italiano di Tecnologia (IIT)
+#
+# This software may be modified and distributed under the terms of the
+# GPL-2+ license. See the accompanying LICENSE file for details.
+#
+#===============================================================================
+cmake_minimum_required(VERSION 3.5)
+
+# Add standard uninstall target path
+list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
+
+add_subdirectory(force_control)
+add_subdirectory(force_controller_core)
+
+# Add standard uninstall target
+include(AddUninstallTarget)
