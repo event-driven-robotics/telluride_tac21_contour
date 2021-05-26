@@ -15,7 +15,7 @@ find_package(GazeboYARPPlugins REQUIRED)
 
 find_package(gazebo REQUIRED)
 
-find_package(ICUB REQUIRED COMPONENTS ctrlLib)
+find_package(ICUB REQUIRED COMPONENTS ctrlLib iKin)
 
 find_package(YARP COMPONENTS os sig math dev REQUIRED)
 
@@ -30,6 +30,7 @@ target_link_libraries(${PROJECT_NAME} PRIVATE YARP::YARP_os
                                               YARP::YARP_sig
                                               GazeboYARPPlugins::gazebo_yarp_singleton
                                               ICUB::skinDynLib
+                                              ICUB::iKin
                                               ${GAZEBO_LIBRARIES})
 
 
