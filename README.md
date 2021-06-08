@@ -22,7 +22,7 @@ To tackle this we have designed a contour following task in different stages of 
 
 ### Task
 
-The robot will always start at the top right corner of the objects with no contact to the contours. Your task is it to give iCub the ability to follow the different contours, first in 2d. Follwing the circle for instans will be the easiest task as it is continous and has no aprupt changes. The triangle otherwise includes very sharp edges and the robot needs to adapt its movement fast and correct to keep track. At least we have included an object with crossing contours to test your solutions on substainabily.
+The robot will always start at the top right corner of the objects with no contact with the contours. Your task is to give iCub the ability to follow the different contours, first in 2d. Following the circle for instance will be the easiest task as it is continuous and has no abrupt changes. The triangle otherwise includes very sharp edges and the robot needs to adapt its movement fast and correctly to keep track. At least we have included an object with crossing contours to test your solutions on sustainability.
 
 For those who master the first challange we have inlcuded the 3d objects. Now it is not sufficient to rely on the spacial component (e.g. which sensor measures the force), but the amount of force gets an important feature to keep contact. Here again the difficulty is wide spread from continues, wavelike structures to some with sharp edges and crossing contours. The 3d objects are similar to the 2d with just adding depth dependencies on top. 
 
