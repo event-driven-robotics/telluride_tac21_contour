@@ -18,7 +18,5 @@ To tackle this we have designed a contour follwoing task in differnet stages of 
 
 2d objects | 3d objects
 :---------:|:---------:
-![2d_objects](https://github.com/event-driven-robotics/telluride_tac21_contour/blob/master/assets/2d_objects.png)  |  ![3d_objects](https://github.com/event-driven-robotics/telluride_tac21_contour/blob/master/assets/3d_objects.png)
+![2d_objects](https://github.com/event-driven-robotics/telluride_tac21_contour/blob/master/assets/2d_objects.png)  |  ![3d_objects](https://github.com/event-driven-robotics/telluride_tac21_contour/blob/master/assets/3d_objects.png) 
 
-
- 
