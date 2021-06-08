@@ -135,6 +135,8 @@ RUN cd /usr/local/src/icub_haptic_exploration_environment && \
     cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local/src/robotology-superbuild/build/install && \
     make -j `nproc` install
 
+ENV YARP_ROBOT_NAME iCubGazeboV2_5_hapticmanip
+
 RUN echo "source /usr/local/src/robotology-superbuild/build/install/share/robotology-superbuild/setup.sh" >> $HOME/.bashrc
 
 COPY icubGazeboApp.xml /usr/local/src/robotology-superbuild/build/install/share/yarp/applications/
