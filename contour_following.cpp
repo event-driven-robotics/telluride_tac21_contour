@@ -33,31 +33,46 @@ using namespace yarp::dev;
 using namespace yarp::sig;
 using namespace yarp::math;
 
-class ContourFollowingModule : public RFModule, public yarp::os::Thread {
+class ContourFollowingModule : public RFModule, public Thread {
 
 private:
     BufferedPort<iCub::skinDynLib::skinContactList> skinEventsPort;
-    PolyDriver drv_arm;
-    PolyDriver drv_finger;
+    // Cartesian control interfaces
+    PolyDriver cartDriver;
     ICartesianControl *cartControl;
-    IPositionControl *posControl;
+    IControlMode *cartControlMode;
+
+    // Position control interfaces
+    PolyDriver drvTorso;
+    PolyDriver drvRightArm;
+    PolyDriver drvLeftArm;
+    PolyDriver drvHead;
+    IPositionControl *posControlRightArm;
+    IPositionControl *posControlLeftArm;
+    IPositionControl *posControlHead;
+    IPositionControl *posControlTorso;
+    IControlMode *controlModeRightArm;
+    IControlMode *controlModeLeftArm;
+    IControlMode *controlModeHead;
+    IControlMode *controlModeTorso;
     IEncoders *iencs;
+    RpcServer rpcServer;
 
     static constexpr double wait_ping{.1};
     static constexpr double wait_tmo{3.};
-    std::string robot, which_arm;
+    std::string robot, arm;
     int startup_context_id_arm;
     double period;
 
-    auto helperWaitDevice(yarp::dev::PolyDriver &driver,
-                          const yarp::os::Property &options,
+    static auto helperWaitDevice(PolyDriver &driver,
+                          const Property &options,
                           const std::string &device_name) {
-        const auto t0 = yarp::os::Time::now();
-        while (yarp::os::Time::now() - t0 < 10.) {
-            if (driver.open(const_cast<yarp::os::Property &>(options))) {
+        const auto t0 = Time::now();
+        while (Time::now() - t0 < 10.) {
+            if (driver.open(const_cast<Property &>(options))) {
                 return true;
             }
-            yarp::os::Time::delay(1.);
+            Time::delay(1.);
         }
 
         yError() << "Unable to open the Device Driver:" << device_name;
@@ -66,7 +81,8 @@ private:
 
 public:
 
-    void closeHand() {
+    void closeHand(IPositionControl *posControl) {
+        posControl->setRefSpeeds(std::vector<double>(15, 30).data());
         std::vector<int> fingerjoints = {7, 11, 12, 13, 14, 15};
         std::vector<double> fingerClosedPos = {60, 0, 2, 82, 140, 230};
         posControl->positionMove(fingerjoints.size(), fingerjoints.data(), fingerClosedPos.data());
@@ -94,34 +110,90 @@ public:
     void parseParams(const ResourceFinder &rf) {
         setName((rf.check("name", Value("/contour_following")).asString()).c_str());
         robot = rf.check("robot", Value("icubSim")).asString();
-        which_arm = rf.check("arm", Value("right_arm")).asString();
+        arm = rf.check("arm", Value("right_arm")).asString();
         period = rf.check("period", Value(0.01)).asDouble();
     }
 
     bool openDrivers() {
         // Setting up device for moving the arm in cartesian space
-        yarp::os::Property options_arm;
+        Property options_arm;
         options_arm.put("device", "cartesiancontrollerclient");
-        options_arm.put("remote", "/" + robot + "/cartesianController/" + which_arm);
-        options_arm.put("local", getName() + "/" + which_arm);
-        if (!helperWaitDevice(drv_arm, options_arm, "Cartesian Controller")) {
+        options_arm.put("remote", "/" + robot + "/cartesianController/" + arm);
+        options_arm.put("local", getName() + "/" + arm);
+        if (!helperWaitDevice(cartDriver, options_arm, "Cartesian Controller")) {
             return false;
         }
 
-        drv_arm.view(cartControl);
+        cartDriver.view(cartControl);
 
-        Property prop_encoders;
-        prop_encoders.put("device", "remote_controlboard");
-        prop_encoders.put("local", getName() + "/controlboard/" + which_arm);
-        prop_encoders.put("remote", "/" + robot + "/" + which_arm);
-        if (drv_finger.open(prop_encoders)) {
-            if (!drv_finger.view(iencs) || !drv_finger.view(posControl)) {
+        Property optionsRightArm;
+        optionsRightArm.put("device", "remote_controlboard");
+        optionsRightArm.put("local", getName() + "/controlboard/right_arm");
+        optionsRightArm.put("remote", "/" + robot + "/right_arm");
+        if (drvRightArm.open(optionsRightArm)) {
+            if (!drvRightArm.view(posControlRightArm) || !drvRightArm.view(controlModeRightArm)) {
                 std::cout << "Could not view driver" << std::endl;
                 return false;
             }
 
         } else {
             std::cout << "Could not open remote controlboard" << std::endl;
+            return false;
+        }
+
+        Property optionsLeftArm;
+        optionsLeftArm.put("device", "remote_controlboard");
+        optionsLeftArm.put("local", getName() + "/controlboard/left_arm");
+        optionsLeftArm.put("remote", "/" + robot + "/left_arm");
+        if (drvLeftArm.open(optionsLeftArm)) {
+            if (!drvLeftArm.view(posControlLeftArm) || !drvLeftArm.view(controlModeLeftArm)) {
+                std::cout << "Could not view driver" << std::endl;
+                return false;
+            }
+
+        } else {
+            std::cout << "Could not open remote controlboard" << std::endl;
+            return false;
+        }
+
+        Property optionsHead;
+        optionsHead.put("device", "remote_controlboard");
+        optionsHead.put("local", getName() + "/controlboard/head");
+        optionsHead.put("remote", "/" + robot + "/head");
+        if (drvHead.open(optionsHead)) {
+            if (!drvHead.view(posControlHead) || !drvHead.view(controlModeHead)) {
+                std::cout << "Could not view driver" << std::endl;
+                return false;
+            }
+
+        } else {
+            std::cout << "Could not open remote controlboard" << std::endl;
+            return false;
+        }
+
+        Property optionsTorso;
+        optionsTorso.put("device", "remote_controlboard");
+        optionsTorso.put("local", getName() + "/controlboard/torso");
+        optionsTorso.put("remote", "/" + robot + "/torso");
+        if (drvTorso.open(optionsTorso)) {
+            if (!drvTorso.view(posControlTorso) || !drvTorso.view(controlModeTorso)) {
+                std::cout << "Could not view driver" << std::endl;
+                return false;
+            }
+
+        } else {
+            std::cout << "Could not open remote controlboard" << std::endl;
+            return false;
+        }
+
+        if (arm == "right_arm") {
+            drvRightArm.view(iencs);
+            drvRightArm.view(cartControlMode);
+        } else if (arm == "left_arm") {
+            drvLeftArm.view(iencs);
+            drvLeftArm.view(cartControlMode);
+        } else {
+            std::cout << "Sorry i only have a left and a right arm" << std::endl;
             return false;
         }
         return true;
@@ -131,7 +203,7 @@ public:
 
         int nEncs;
         iencs->getAxes(&nEncs);
-        yarp::sig::Vector encs(nEncs);
+        Vector encs(nEncs);
         // try to read the joint encoders
         std::size_t counter = 0;
         while (!iencs->getEncoders(encs.data())) {
@@ -147,9 +219,39 @@ public:
         Matrix tipFrame = finger.getH((M_PI / 180.0) * joints);
 
         Vector tip_x = tipFrame.getCol(3);
-        Vector tip_o = yarp::math::dcm2axis(tipFrame);
+        Vector tip_o = dcm2axis(tipFrame);
         cartControl->attachTipFrame(tip_x, tip_o); // establish the new controlled frame
         return true;
+    }
+
+    void home() {
+        controlModeRightArm->setControlModes(std::vector<int>(15, VOCAB_CM_POSITION).data());
+        controlModeLeftArm->setControlModes(std::vector<int>(15, VOCAB_CM_POSITION).data());
+        controlModeHead->setControlModes(std::vector<int>(6, VOCAB_CM_POSITION).data());
+        controlModeTorso->setControlModes(std::vector<int>(3, VOCAB_CM_POSITION).data());
+        posControlRightArm->setRefSpeeds(std::vector<double>(15, 30).data());
+        posControlLeftArm->setRefSpeeds(std::vector<double>(15, 30).data());
+        posControlHead->setRefSpeeds(std::vector<double>(6, 30).data());
+        posControlTorso->setRefSpeeds(std::vector<double>(3, 15).data());
+        posControlRightArm->positionMove(std::vector<double>{-30, 30, 0, 45, 0, 0, 0, 60, 0, 0, 0, 0, 0, 0, 0, 0}.data());
+        posControlLeftArm->positionMove(std::vector<double>{-30, 30, 0, 45, 0, 0, 0, 60, 0, 0, 0, 0, 0, 0, 0, 0}.data());
+        posControlHead->positionMove(std::vector<double>{0, 0, 0, 0, 0, 0}.data());
+        posControlTorso->positionMove(std::vector<double>{0, 0, 0}.data());
+        bool done = false;
+        double now = Time::now();
+        while (!done && Time::now() - now < wait_tmo) {
+            done = true;
+            bool check;
+            posControlLeftArm->checkMotionDone(&check);
+            done &= check;
+            posControlRightArm->checkMotionDone(&check);
+            done &= check;
+            posControlHead->checkMotionDone(&check);
+            done &= check;
+            posControlTorso->checkMotionDone(&check);
+            done &= check;
+            sleep(1);
+        }
     }
 
     bool configure(ResourceFinder &rf) {
@@ -159,36 +261,40 @@ public:
         if (!moveEndEffectorToFingertip()) return false;
 
         // Set reference speed for all arm joints
-        std::vector<double> speeds(15, 30);
+        home();
+        if (arm == "right_arm") {
+            controlModeRightArm->setControlModes(std::vector<int>(15, VOCAB_CM_POSITION).data());
+            closeHand(posControlRightArm);
+        } else {
+            controlModeLeftArm->setControlModes(std::vector<int>(15, VOCAB_CM_POSITION).data());
+            closeHand(posControlLeftArm);
+        }
 
-        posControl->setRefSpeeds(speeds.data());
-        closeHand();
-
+        cartControlMode->setControlModes(std::vector<int>(15, VOCAB_CM_POSITION).data());
+        cartControl->setPosePriority("orientation");
         cartControl->storeContext(&startup_context_id_arm);    //Storing initial context for restoring it later
-        cartControl->setTrajTime(
-                .6);                       // Each trajectory would take this much amount of time to perform
+        cartControl->setTrajTime(.6);               // Each trajectory would take this much amount of time to perform
 
         // Enabling all degrees of freedom
-        yarp::sig::Vector dof;
+        Vector dof;
         cartControl->getDOF(dof);
         dof = 1.;
         cartControl->setDOF(dof, dof);
 
         //--- Moving to starting pose ---//
-        yarp::sig::Vector x0{-0.4, 0.1, 0.1}; // Starting end effector position
+        Vector x0{-0.4, 0.1, 0.1}; // Starting end effector position
 
         //Rotation from root frame to end effector pointing straight ahead
-        yarp::sig::Matrix R = yarp::math::zeros(3, 3);
+        Matrix R = zeros(3, 3);
         R(0, 0) = -1.;
         R(1, 1) = 1.;
         R(2, 2) = -1.;
 
         // Transformation defining the initial angle of the end effector wrt the table
-        yarp::sig::Matrix impactAngle = yarp::math::euler2dcm(yarp::sig::Vector{0, -M_PI / 12, 0});
+        Matrix impactAngle = euler2dcm(Vector{0, -M_PI / 12, 0});
 
-        yarp::sig::Vector o0 = yarp::math::dcm2axis(R * impactAngle);
+        Vector o0 = dcm2axis(R * impactAngle);
 
-        cartControl->setPosePriority("orientation");
         cartControl->goToPoseSync(x0, o0);
         cartControl->waitMotionDone(wait_ping, wait_tmo);
 
@@ -199,10 +305,26 @@ public:
             yError() << "Port could not open";
             return false;
         }
+        if (!rpcServer.open(getName("/rpc"))) {
+            yError() << "Could not open rpc port";
+            return false;
+        }
 
-        yarp::os::Network::connect("/left_hand/skinManager/skin_events:o", skinEventsPortName);
+        attach(rpcServer);
+        Network::connect("/left_hand/skinManager/skin_events:o", skinEventsPortName);
 
         return Thread::start();
+    }
+
+    bool respond(const Bottle &command, Bottle &reply) {
+        if (command.get(0).asString() == "home") {
+            reply.addString("Going back home");
+            home();
+        } else {
+            reply.addString("Command not recognized. Available commands: home");
+        }
+
+        return true;
     }
 
     // Synchronous update every getPeriod() seconds
@@ -240,7 +362,7 @@ public:
         skinEventsPort.close();
         cartControl->stopControl();
         cartControl->restoreContext(startup_context_id_arm);
-        drv_arm.close();
+        cartDriver.close();
 
         yInfo() << "...done!";
         return RFModule::close();
