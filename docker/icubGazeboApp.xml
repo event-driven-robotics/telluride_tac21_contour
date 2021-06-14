@@ -13,7 +13,7 @@
         <module>
                 <name>gazebo</name>
                 <!-- Load here your world -->
-                <parameters>/usr/local/src/robotology-superbuild/build/install/share/gazebo/worlds/vte_scenario.sdf</parameters>
+                <parameters>/usr/local/src/robotology-superbuild/build/install/share/gazebo/worlds/he_scenario.sdf</parameters>
                 <dependencies>
                     <port timeout="20">/transformServer/transforms:o</port>
                 </dependencies>/

@@ -137,6 +137,13 @@ RUN cd /usr/local/src/icub_haptic_exploration_environment && \
 
 ENV YARP_ROBOT_NAME iCubGazeboV2_5_hapticmanip
 
-RUN echo "source /usr/local/src/robotology-superbuild/build/install/share/robotology-superbuild/setup.sh" >> $HOME/.bashrc
+SHELL ["/bin/bash", "-c"]
+
+RUN ln -s /usr/local/src/robotology-superbuild/build/install/share/bash-completion/completions/yarp /etc/bash_completion.d/ && \
+    echo $' \n\
+source /usr/local/src/robotology-superbuild/build/install/share/robotology-superbuild/setup.sh \n\
+if [ -f /etc/bash_completion ] && ! shopt -oq posix; then \n\
+   . /etc/bash_completion \n\
+fi ' >> $HOME/.bashrc
 
 COPY icubGazeboApp.xml /usr/local/src/robotology-superbuild/build/install/share/yarp/applications/

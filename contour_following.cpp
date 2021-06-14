@@ -276,13 +276,18 @@ public:
         cartControl->setTrajTime(.6);               // Each trajectory would take this much amount of time to perform
 
         // Enabling all degrees of freedom
-        Vector dof;
+        yarp::sig::Vector dof;
         cartControl->getDOF(dof);
-        dof = 1.;
+
+        //     TORSO    | SHOULDER  | ELBOW | WRIST
+        //     p, r, y  | p, r, y   |       | p, r, y    (p=pitch, r=roll, y=yaw)
+        dof = {0, 0, 0,   1, 1, 1,    1,      1, 1, 1};  // Set to 1 to enable corresponding dof
         cartControl->setDOF(dof, dof);
 
         //--- Moving to starting pose ---//
-        Vector x0{-0.4, 0.1, 0.1}; // Starting end effector position
+        // Please refer to link below for detailed description of robot frames
+        // https://icub-tech-iit.github.io/documentation/icub_kinematics/icub-forward-kinematics/icub-forward-kinematics
+        yarp::sig::Vector x0{-0.4, 0.1, 0.1}; // Starting end effector position
 
         //Rotation from root frame to end effector pointing straight ahead
         Matrix R = zeros(3, 3);
