@@ -20,10 +20,34 @@ Docker provides a simple and effective way to share and maintain your developmen
 
 ### Docker installation
 
-Please follow the instructions at this [link](https://docs.docker.com/engine/install/) to install Docker on your computer. We recommend using a linux distribution of your choice or WSL on Windows. Also it is advisable to have a computer equipped with a Nvidia GPU to run the simulator.
+Please follow the instructions at this [link](https://docs.docker.com/engine/install/) to install Docker on your computer. We recommend using a linux distribution of your choice. Also it is advisable to have a computer equipped with a Nvidia GPU to run the simulator.
 
 To obtain NVIDIA and OpenGL support within the container, you must first install the `nvidia-container-runtime` following the instruction at this [link](https://github.com/NVIDIA/nvidia-container-runtime).
 
+In order to run docker commands without sudo, once the installation is complete you can run the following command 
+
+```bash
+sudo usermod -aG docker $USER
+```
+
+as explained [here](https://docs.docker.com/engine/install/linux-postinstall/). For this change to take place you will have to logout and back in. This can easily achieved rebooting your computer. To test your installation you should now be able to run 
+
+```bash
+docker run hello-world
+```
+
+ ## Useful commands 
+
+  * `docker run -it --name <CONTAINER_NAME> <IMAGE_NAME>` to run a container in interactive mode.
+  * `docker ps -a` to obtain the list of your containers.
+  * `docker images` to obtain the list of your images.
+  * `docker exec -it <CONTAINER_NAME> bash` to run a bash inside a container.
+  * `docker build [OPTIONS] PATH | URL | -` to build Docker images from a Dockerfile. 
+  * `docker rmi <IMAGE_NAME>`to remove an image. **NOTE**: all containers and images based on the image to remove must be removed first. 
+  * `docker start <CONTAINER_NAME>`to start a container.
+  * `docker stop <CONTAINER_NAME>`to stop a container.
+  * `docker rm <CONTAINER_NAME>`to remove a container. **NOTE**: container must be stopped first.
+  
 ### Running the image on Linux
 
 After the installation you can run the image using the following command:
@@ -47,10 +71,11 @@ docker run -it --name telluride \
            eventdrivenrobotics/telluride:latest
 ```
 
-
 For further information about the meaning of each option please refer to the official documentation at this [link](https://docs.docker.com/engine/reference/run/).
 
-The above commands also enable screen forwarding. For it to properly work you need to authorize docker to run GUI on the XServer using the command:
+Once you run the container you will enter a bash in a system which is isolated from the rest of your machine. In there you will find the typical linux file system, and all the dependencies, libraries, which will be used during the workshop already installed for you. 
+
+The above commands also enable screen forwarding. For it to properly work you need to authorize docker to run GUI on the XServer running the following command on your host machine (outside the container):
 
 ```bash
 xhost local:docker
@@ -64,6 +89,12 @@ then
 fi
 ```
 
+After closing the terminals, you can always access a previously run container with:
+```bash
+docker start telluride
+docker exec -it telluride bash
+```
+
 To avoid typing long and hard to memorize commands we have provided a simple set of commands that you can source from your `~/.bashrc`. To do it download the file available in this repo at `docker/bashrc_docker` then add the following lines to your bashrc:
 
 ```bash
@@ -72,7 +103,6 @@ PATH_TO_DATA=/path/to/data
 PATH_TO_APP=/path/to/app
 source /path/to/bashrc_docker
 ```
-
 where you need to specify the path to the `bashrc_docker` file you just downloaded and, optionally but strongly recommended, the path to where you keep your code, your data and your applications. These three directories will be shared with the running container so that you can work on the code that is stored in your host machine (and not risk to lose your work), get the data you need to run the code, and eventually run some applications (i.e. IDEs) from within your container. You will find them inside the container at `/data`, `/code`, `/apps`.
 
 After restarting the bash, you will have available on your command line three functions with auto-complete support:
@@ -84,9 +114,11 @@ Adds the Nvidia and OpenGL specific options to `run_docker`.
 * `start_docker <CONTAINER_NAME>`
 Starts and executes a bash on the specified container (must be run first).
 
+if you have "_completion_loader: command not found" error, then make sure (or add otherwise) that the command line "source /etc/profile.d/bash_completion.sh" appears uncommented before the source of the .basrch_docker file inside the .bashrc.
+
 ### Using the container
 
-The whole infrastructure we will be using for this task depends on the [YARP](https://www.yarp.it/git-master/) middleware. The latter puts in communication several modules potentially spanned across several machines onto the same network. The modules communicate via ports that, once connected, will stream information through a server which must run in the background all the time. Please refer to [link](https://www.yarp.it/git-master/tutorials.html) for a series of tutorials on how to implement such communication. You will also find similar snippets in the starting code available in this repo. 
+The whole infrastructure we will be using for this task depends on the [YARP](https://www.yarp.it/git-master/) middleware (already installed in the container). The latter puts in communication several modules potentially spanned across several machines onto the same network. The modules communicate via ports that, once connected, will stream information through a server which must run in the background all the time. Please refer to [link](https://www.yarp.it/git-master/tutorials.html) for a series of tutorials on how to implement such communication. You will also find similar snippets in the starting code available in this repo. 
 
 In order to get everything started you must then run the container, start a yarpserver and from a separate terminal open another bash inside the container and run the yarpmanager. The latter is a graphical tool that allows to start and connect multiple modules with one click. We have already prepared an application called iCub_Contour_following that launches the simulator, a logger and a motor GUI which allows to see the status and move the joints of the robot in simulation. See GIF below to get an idea of this pipeline.
 
@@ -95,6 +127,8 @@ In order to get everything started you must then run the container, start a yarp
 To start the development we recommend to keep this repository stored in your code directory (see section above for description of the folder convention) and open it with your favorite IDE. There are several methods to allow the development inside the container. In the next GIF we demonstrate how to launch CLion from within the container, providing it access to the all files and libraries stored and installed in it.  
 
 ![open_clion](assets/open_clion.gif)
+
+Another option would be to use the docker integration plugin available for visual studio code. You can find instructions on how to use it at this [link](https://code.visualstudio.com/docs/remote/containers).
 
 The starting code in `contour_following.cpp` we provide already contains the necessary to connect to the robot, move it to a starting position and read in a loop the tactile sensor readout. There are markers in the file that will tell you where you will have to add your contribution.
 
