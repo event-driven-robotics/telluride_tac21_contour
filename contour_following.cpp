@@ -1,12 +1,5 @@
 // Standard libraries
-#ifdef _WIN32
-#include <Windows.h>
-#else
-
 #include <unistd.h>
-
-#endif
-
 #include <cmath>
 #include <string>
 #include <cstdlib>
@@ -63,23 +56,7 @@ private:
     std::string robot, arm;
     int startup_context_id_arm;
     double period;
-
-    static auto helperWaitDevice(PolyDriver &driver,
-                          const Property &options,
-                          const std::string &device_name) {
-        const auto t0 = Time::now();
-        while (Time::now() - t0 < 10.) {
-            if (driver.open(const_cast<Property &>(options))) {
-                return true;
-            }
-            Time::delay(1.);
-        }
-
-        yError() << "Unable to open the Device Driver:" << device_name;
-        return false;
-    }
-
-public:
+private:
 
     void closeHand(IPositionControl *posControl) {
         posControl->setRefSpeeds(std::vector<double>(15, 30).data());
@@ -120,7 +97,7 @@ public:
         options_arm.put("device", "cartesiancontrollerclient");
         options_arm.put("remote", "/" + robot + "/cartesianController/" + arm);
         options_arm.put("local", getName() + "/" + arm);
-        if (!helperWaitDevice(cartDriver, options_arm, "Cartesian Controller")) {
+        if (!cartDriver.open(options_arm)) {
             return false;
         }
 
@@ -254,13 +231,14 @@ public:
         }
     }
 
+public:
+
     bool configure(ResourceFinder &rf) {
 
         parseParams(rf);
         if (!openDrivers()) return false;
         if (!moveEndEffectorToFingertip()) return false;
 
-        // Set reference speed for all arm joints
         home();
         if (arm == "right_arm") {
             controlModeRightArm->setControlModes(std::vector<int>(15, VOCAB_CM_POSITION).data());
@@ -296,6 +274,8 @@ public:
         R(2, 2) = -1.;
 
         // Transformation defining the initial angle of the end effector wrt the table
+        // At the link below a detailed documentation on the kinematic chain of the robot
+        // https://icub-tech-iit.github.io/documentation/icub_kinematics/icub-forward-kinematics/icub-forward-kinematics
         Matrix impactAngle = euler2dcm(Vector{0, -M_PI / 12, 0});
 
         Vector o0 = dcm2axis(R * impactAngle);
