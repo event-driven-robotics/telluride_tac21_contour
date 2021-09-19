@@ -20,9 +20,9 @@ Docker provides a simple and effective way to share and maintain your developmen
 
 ### Docker installation
 
-Please follow the instructions at this [link](https://docs.docker.com/engine/install/) to install Docker on your computer. We recommend using a linux distribution of your choice. Also it is advisable to have a computer equipped with a Nvidia GPU to run the simulator.
+Please follow the instructions at this [link](https://docs.docker.com/engine/install/) to install Docker on your computer. We recommend using a linux distribution of your choice. Also it is advisable to have a computer equipped with a Intel/Nvidia GPU to run the simulator.
 
-To obtain NVIDIA and OpenGL support within the container, you must first install the `nvidia-container-runtime` following the instruction at this [link](https://github.com/NVIDIA/nvidia-container-runtime).
+To obtain NVIDIA support within the container, you must first install the `nvidia-container-runtime` following the instruction at this [link](https://github.com/NVIDIA/nvidia-container-runtime).
 
 In order to run docker commands without sudo, once the installation is complete you can run the following command 
 
@@ -59,7 +59,16 @@ docker run -it --name telluride \
            eventdrivenrobotics/telluride:latest
 ```
 
-If you also want to activate the graphic card run the following:
+If you want to use the primary graphic card on your system, typically Intel, within the container run the following:
+```bash
+docker run -it --name telluride \
+            -v /tmp/.X11-unix/:/tmp/.X11-unix \
+            -e DISPLAY=$DISPLAY \
+            -v /dev/dri:/dev/dri \
+            eventdrivenrobotics/telluride 
+```
+
+To use NVIDIA GPU specifically, please use instead:
 
 ```bash
 docker run -it --name telluride \

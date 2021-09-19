@@ -56,6 +56,9 @@ private:
     std::string robot, arm;
     int startup_context_id_arm;
     double period;
+
+    // Default orientation
+    Vector orientation_0;
 private:
 
     void closeHand(IPositionControl *posControl) {
@@ -177,27 +180,29 @@ private:
     }
 
     bool moveEndEffectorToFingertip() {
+        // We are interested in the pose of the index when it is totally open,
+        // hence it suffices to provide a 9-dimensional vector of zero vectors
+        // except for the first angle indicating the iCub adduction/abduction
+        // that need to be 60.0 degrees
+        Vector fake_encs(9);
+        fake_encs.zero();
+        fake_encs[0] = 60.0 * M_PI / 180.0;
 
-        int nEncs;
-        iencs->getAxes(&nEncs);
-        Vector encs(nEncs);
-        // try to read the joint encoders
-        std::size_t counter = 0;
-        while (!iencs->getEncoders(encs.data())) {
-            if (++counter == 50) {
-                std::cout << "Error while reading the encoders.";
-                return false;
-            }
-            usleep(100000);
-        }
         Vector joints;
         iCub::iKin::iCubFinger finger("right_index"); // relevant code to get the position of the finger tip
-        finger.getChainJoints(encs, joints);          // wrt the end-effector frame
-        Matrix tipFrame = finger.getH((M_PI / 180.0) * joints);
+        Matrix tipFrame = finger.getH(fake_encs);
 
         Vector tip_x = tipFrame.getCol(3);
-        Vector tip_o = dcm2axis(tipFrame);
-        cartControl->attachTipFrame(tip_x, tip_o); // establish the new controlled frame
+
+        // To simplify the development, we will only move the end effector position to the fingertip
+        // while leaving the orientation of the hand palm
+        Vector identity_axis_angle(4);
+        identity_axis_angle.zero();
+        // Even if the angle is zero, we should provide a suitable direction for the axis
+        identity_axis_angle[0] = 1.0;
+
+        // Establish the new controlled frame
+        cartControl->attachTipFrame(tip_x, identity_axis_angle);
         return true;
     }
 
@@ -236,9 +241,22 @@ public:
     bool configure(ResourceFinder &rf) {
 
         parseParams(rf);
-        if (!openDrivers()) return false;
-        if (!moveEndEffectorToFingertip()) return false;
 
+        // Open and connect skinEventsPort for reading skin events
+        const char *skinEventsPortName = "/skin_events:i";
+        skinEventsPort.open(skinEventsPortName);
+        if (!skinEventsPort.open(skinEventsPortName)) {
+            yError() << "Port could not open";
+            return false;
+        }
+        if (!rpcServer.open(getName("/rpc"))) {
+            yError() << "Could not open rpc port";
+            return false;
+        }
+        Network::connect("/right_hand/skinManager/skin_events:o", skinEventsPortName);
+
+        // Initialize control boards
+        if (!openDrivers()) return false;
         home();
         if (arm == "right_arm") {
             controlModeRightArm->setControlModes(std::vector<int>(15, VOCAB_CM_POSITION).data());
@@ -248,24 +266,33 @@ public:
             closeHand(posControlLeftArm);
         }
 
-        cartControlMode->setControlModes(std::vector<int>(15, VOCAB_CM_POSITION).data());
-        cartControl->setPosePriority("orientation");
-        cartControl->storeContext(&startup_context_id_arm);    //Storing initial context for restoring it later
-        cartControl->setTrajTime(.6);               // Each trajectory would take this much amount of time to perform
+        //Storing initial context for restoring it later
+        cartControl->storeContext(&startup_context_id_arm);
+        // Note: the trajectory time only represents the responsiveness of the controller,
+        // it does not correspond to the time required to execute the trajectory
+        cartControl->setTrajTime(1.0);
 
-        // Enabling all degrees of freedom
+        // Enable torso pitch and yaw only
         yarp::sig::Vector dof;
         cartControl->getDOF(dof);
-
-        //     TORSO    | SHOULDER  | ELBOW | WRIST
-        //     p, r, y  | p, r, y   |       | p, r, y    (p=pitch, r=roll, y=yaw)
-        dof = {0, 0, 0,   1, 1, 1,    1,      1, 1, 1};  // Set to 1 to enable corresponding dof
+        dof[0]=1;    // torso pitch: 1 => enable
+        dof[1]=0;    // torso roll:  2 => disable
+        dof[2]=1;    // torso yaw:   1 => enable
         cartControl->setDOF(dof, dof);
 
-        //--- Moving to starting pose ---//
+        // Move the end effector from the hand palm to the right hand index fingertip
+        if (!moveEndEffectorToFingertip())
+          return false;
+
+        // Attach RPC server
+        attach(rpcServer);
+
+        //--- Move to starting pose ---//
+
         // Please refer to link below for detailed description of robot frames
         // https://icub-tech-iit.github.io/documentation/icub_kinematics/icub-forward-kinematics/icub-forward-kinematics
-        yarp::sig::Vector x0{-0.4, 0.1, 0.1}; // Starting end effector position
+        yarp::sig::Vector x0{-0.3, 0.0, 0.0}; // Starting end effector position (0)
+        yarp::sig::Vector x1{-0.3, 0.0, -0.05}; // Starting end effector position (1)
 
         //Rotation from root frame to end effector pointing straight ahead
         Matrix R = zeros(3, 3);
@@ -278,25 +305,16 @@ public:
         // https://icub-tech-iit.github.io/documentation/icub_kinematics/icub-forward-kinematics/icub-forward-kinematics
         Matrix impactAngle = euler2dcm(Vector{0, -M_PI / 12, 0});
 
-        Vector o0 = dcm2axis(R * impactAngle);
+        // Additional transformation to tilt a bit the hand and avoid the fingers touching the surface
+        Matrix tiltAngle = euler2dcm(Vector{0, -15.0 * M_PI / 180.0, 0});
 
-        cartControl->goToPoseSync(x0, o0);
+        // Evaluate the overall orientation
+        orientation_0 = dcm2axis(tiltAngle * R * impactAngle);
+
+        cartControl->goToPoseSync(x0, orientation_0, 3.0);
         cartControl->waitMotionDone(wait_ping, wait_tmo);
-
-        // open and connect skinEventsPort for reading skin events
-        const char *skinEventsPortName = "/skin_events:i";
-        skinEventsPort.open(skinEventsPortName);
-        if (!skinEventsPort.open(skinEventsPortName)) {
-            yError() << "Port could not open";
-            return false;
-        }
-        if (!rpcServer.open(getName("/rpc"))) {
-            yError() << "Could not open rpc port";
-            return false;
-        }
-
-        attach(rpcServer);
-        Network::connect("/left_hand/skinManager/skin_events:o", skinEventsPortName);
+        cartControl->goToPoseSync(x1, orientation_0, 3.0);
+        cartControl->waitMotionDone(wait_ping, wait_tmo);
 
         return Thread::start();
     }
@@ -317,11 +335,16 @@ public:
 
         //Reading skin events
         iCub::skinDynLib::skinContactList *input = skinEventsPort.read(false);
-        if (input) {
-            std::cout << input->toString() << std::endl;
-        }
 
-        // PUT YOUR CODE HERE
+        if (input != nullptr)
+        {
+            // Tip: iCub::skinDynLib::skinContactList is also a std::vector<iCub::skinDynLib::skinContact>
+            // i.e. a vector of skinContact objects.
+            // The API of iCub::skinDynLib::skinContact can be found at the following URL:
+            // https://robotology.github.io/robotology-documentation/doc/html/classiCub_1_1skinDynLib_1_1skinContact.html
+
+            // PUT YOUR CODE HERE
+        }
 
         return true;
     }
